@@ -23,7 +23,7 @@ from codebench.core.runner.pipeline import BenchmarkPipeline
 
 console = Console()
 
-# Maps dataset names to their scenario type and a bundled fixture path (if any).
+# Maps dataset names to their scenario type.
 _DATASET_SCENARIOS: dict[str, ScenarioType] = {
     "humaneval_plus": ScenarioType.FUNCTION_CODEGEN,
     "mbpp_plus": ScenarioType.FUNCTION_CODEGEN,
@@ -33,6 +33,9 @@ _DATASET_SCENARIOS: dict[str, ScenarioType] = {
     "livecodebench_lite": ScenarioType.CONTEST_CODEGEN,
     "cruxeval": ScenarioType.CODE_REASONING,
 }
+
+# Scenarios with working adapters (not stubs).
+_IMPLEMENTED_SCENARIOS: set[ScenarioType] = {ScenarioType.FUNCTION_CODEGEN}
 
 
 # ---------------------------------------------------------------------------
@@ -362,8 +365,23 @@ async def execute_from_env(
         console.print(f"  Concurrency: {concurrency}")
 
     if dataset_name == "all":
-        datasets = list(_DATASET_SCENARIOS.keys())
+        # Only run datasets whose scenario adapter is implemented
+        datasets = [
+            name
+            for name, scenario in _DATASET_SCENARIOS.items()
+            if scenario in _IMPLEMENTED_SCENARIOS
+        ]
+        skipped = [
+            name
+            for name, scenario in _DATASET_SCENARIOS.items()
+            if scenario not in _IMPLEMENTED_SCENARIOS
+        ]
         console.print(f"  Mode: benchmark all ({len(datasets)} datasets)")
+        if skipped:
+            console.print(
+                f"  [dim]Skipping {len(skipped)} stub scenarios: "
+                f"{', '.join(skipped)}[/dim]"
+            )
     else:
         datasets = [dataset_name]
 

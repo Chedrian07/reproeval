@@ -44,9 +44,19 @@ class FunctionCodegenAdapter(ScenarioAdapter):
     def format_prompt(self, instance: dict[str, Any]) -> ProviderRequest:
         """Build a :class:`ProviderRequest` from a dataset instance.
 
-        Expected instance keys: ``task_id``, ``prompt``, ``entry_point`` (optional).
+        Supports multiple prompt field names:
+        - ``prompt`` (HumanEval+, MBPP+)
+        - ``instruct_prompt`` (BigCodeBench — natural language instruction)
+        - ``complete_prompt`` (BigCodeBench — code completion with docstring)
         """
-        prompt = instance["prompt"]
+        prompt = (
+            instance.get("prompt")
+            or instance.get("instruct_prompt")
+            or instance.get("complete_prompt")
+            or ""
+        )
+        if not prompt:
+            raise KeyError("No prompt field found in instance")
         entry_point = instance.get("entry_point", "")
         user_prompt = f"Complete the following Python function.\n\n{prompt}"
         return ProviderRequest(
