@@ -31,6 +31,55 @@ _FENCE_RE = re.compile(
     re.DOTALL,
 )
 
+# Regex to extract function name called in MBPP-style assertion tests.
+_ASSERTION_FUNC_RE = re.compile(r"(?:assertion|assert)\w*\((\w+)\(")
+
+
+def _get_prompt_text(instance: dict[str, Any]) -> str:
+    """Resolve the prompt field from a dataset instance."""
+    return (
+        instance.get("prompt")
+        or instance.get("instruct_prompt")
+        or instance.get("complete_prompt")
+        or ""
+    )
+
+
+def _get_code_context(instance: dict[str, Any]) -> str:
+    """Resolve the code-bearing prompt for import extraction."""
+    return (
+        instance.get("prompt")
+        or instance.get("code_prompt")
+        or instance.get("complete_prompt")
+        or ""
+    )
+
+
+def _infer_entry_point(instance: dict[str, Any]) -> str:
+    """Infer the expected function name from the instance.
+
+    Priority: explicit entry_point > extracted from test assertions.
+    """
+    ep = instance.get("entry_point", "")
+    if ep:
+        return ep
+    # MBPP-style: extract from assertion(func_name(...), ...)
+    test_code = instance.get("test", "")
+    m = _ASSERTION_FUNC_RE.search(test_code)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _extract_imports(code: str) -> list[str]:
+    """Extract import lines from source code."""
+    imports: list[str] = []
+    for line in code.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            imports.append(stripped)
+    return imports
+
 
 class FunctionCodegenAdapter(ScenarioAdapter):
     """Adapter for ``function_codegen`` scenarios."""
@@ -48,17 +97,21 @@ class FunctionCodegenAdapter(ScenarioAdapter):
         - ``prompt`` (HumanEval+, MBPP+)
         - ``instruct_prompt`` (BigCodeBench — natural language instruction)
         - ``complete_prompt`` (BigCodeBench — code completion with docstring)
+
+        For MBPP-style datasets without ``entry_point``, the expected function
+        name is inferred from the test code and included in the prompt.
         """
-        prompt = (
-            instance.get("prompt")
-            or instance.get("instruct_prompt")
-            or instance.get("complete_prompt")
-            or ""
-        )
+        prompt = _get_prompt_text(instance)
         if not prompt:
             raise KeyError("No prompt field found in instance")
-        entry_point = instance.get("entry_point", "")
+
+        entry_point = _infer_entry_point(instance)
+
         user_prompt = f"Complete the following Python function.\n\n{prompt}"
+        if entry_point and "entry_point" not in instance:
+            # MBPP-style: LLM needs to know the expected function name
+            user_prompt += f"\n\nThe function must be named `{entry_point}`."
+
         return ProviderRequest(
             prompt=user_prompt,
             system_prompt=_SYSTEM_PROMPT,
@@ -103,22 +156,24 @@ class FunctionCodegenAdapter(ScenarioAdapter):
     ) -> dict[str, Any]:
         """Combine the candidate function with the test harness.
 
-        Handles two test formats:
+        Handles three test formats:
         - HumanEval-style: test has ``def check(candidate):`` wrapper
           → append ``check(entry_point)`` to invoke it
         - MBPP-style: test has inline assertions (no check wrapper)
-          → use test code as-is, no extra call needed
+          → use test code as-is
+        - BigCodeBench-style: test uses ``unittest.TestCase``
+          → append ``unittest.main()`` to run the tests
 
         Also prepends any import statements from the original prompt so that
-        type annotations (``List``, ``Tuple``, etc.) are available even when
-        the LLM omits them from its response.
+        type annotations and library imports are available even when the LLM
+        omits them from its response.
         """
         test_code = instance.get("test", "")
-        entry_point = instance.get("entry_point", "")
-        prompt = instance.get("prompt", "")
+        entry_point = _infer_entry_point(instance)
+        code_context = _get_code_context(instance)
 
-        # Extract imports from the original prompt and ensure they are present
-        prompt_imports = _extract_imports(prompt)
+        # Extract imports from the original prompt/code and ensure they are present
+        prompt_imports = _extract_imports(code_context)
         submission_imports = _extract_imports(submission)
         missing_imports = [i for i in prompt_imports if i not in submission_imports]
 
@@ -130,10 +185,17 @@ class FunctionCodegenAdapter(ScenarioAdapter):
         parts.append("")
         parts.append(test_code)
 
-        # Only append check(entry_point) if the test defines a check() wrapper
+        # HumanEval-style: check(candidate) wrapper needs explicit invocation
         if entry_point and "def check(" in test_code:
             parts.append("")
             parts.append(f"check({entry_point})")
+
+        # BigCodeBench-style: unittest.TestCase needs unittest.main()
+        if "unittest.TestCase" in test_code and "unittest.main()" not in test_code:
+            parts.append("")
+            parts.append("if __name__ == '__main__':")
+            parts.append("    import unittest")
+            parts.append("    unittest.main()")
 
         full_code = "\n".join(parts)
 
@@ -143,7 +205,6 @@ class FunctionCodegenAdapter(ScenarioAdapter):
             "entry_point": entry_point,
             "timeout_seconds": 30,
         }
-
 
     # -- scoring ----------------------------------------------------------
 
@@ -179,13 +240,3 @@ class FunctionCodegenAdapter(ScenarioAdapter):
                 "task_id": instance.get("task_id", ""),
             },
         )
-
-
-def _extract_imports(code: str) -> list[str]:
-    """Extract import lines from source code."""
-    imports: list[str] = []
-    for line in code.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(("import ", "from ")):
-            imports.append(stripped)
-    return imports

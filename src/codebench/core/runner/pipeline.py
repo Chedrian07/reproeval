@@ -73,8 +73,10 @@ class BenchmarkPipeline:
         )
 
         try:
-            # Step 1: Format prompt
+            # Step 1: Format prompt and apply config overrides
             request: ProviderRequest = self.scenario.format_prompt(instance)
+            request.temperature = self.config.provider.temperature
+            request.max_tokens = self.config.provider.max_tokens
             if self.config.seed is not None:
                 request.seed = self.config.seed
 
@@ -262,6 +264,7 @@ class BenchmarkPipeline:
         concurrency = self.config.concurrency
         results: list[InstanceResult] = []
         tasks: list[asyncio.Task[InstanceResult]] = []
+        _interrupted = False
 
         try:
             if self._debug:
@@ -293,10 +296,18 @@ class BenchmarkPipeline:
                         manifest.completed_instances += 1
 
             manifest.status = RunStatus.COMPLETED
-        except (KeyboardInterrupt, Exception):
+        except KeyboardInterrupt:
             manifest.status = RunStatus.FAILED
             for t in tasks:
                 t.cancel()
+            _interrupted = True
+        except Exception:
+            manifest.status = RunStatus.FAILED
+            for t in tasks:
+                t.cancel()
+            _interrupted = False
+        else:
+            _interrupted = False
         finally:
             passed = sum(
                 1 for r in results if r.scoring_result is not None and r.scoring_result.passed
@@ -309,6 +320,8 @@ class BenchmarkPipeline:
                 "pass_rate": passed / total if total else 0.0,
             }
             self.artifact_store.save_manifest(manifest.run_id, manifest.model_dump(mode="json"))
+            if _interrupted:
+                raise KeyboardInterrupt
 
         return manifest
 
