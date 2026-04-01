@@ -27,8 +27,8 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 
 # Regex to strip markdown code fences from LLM output.
 _FENCE_RE = re.compile(
-    r"^```(?:python|py)?\s*\n(.*?)```\s*$",
-    re.DOTALL | re.MULTILINE,
+    r"```(?:python|py)?\s*\n(.*?)```",
+    re.DOTALL,
 )
 
 
@@ -44,7 +44,7 @@ class FunctionCodegenAdapter(ScenarioAdapter):
     def format_prompt(self, instance: dict[str, Any]) -> ProviderRequest:
         """Build a :class:`ProviderRequest` from a dataset instance.
 
-        Expected instance keys: ``task_id``, ``prompt``, ``entry_point``.
+        Expected instance keys: ``task_id``, ``prompt``, ``entry_point`` (optional).
         """
         prompt = instance["prompt"]
         entry_point = instance.get("entry_point", "")
@@ -64,12 +64,25 @@ class FunctionCodegenAdapter(ScenarioAdapter):
     def extract_submission(self, response: ProviderResponse) -> str:
         """Extract clean Python source from the provider response.
 
-        Strips markdown fences if present, and normalises trailing whitespace.
+        If the response contains markdown fences, takes the LAST code block
+        (LLMs often put the real solution last after explanations).
+        Otherwise strips leading non-code preamble heuristically.
         """
         content = response.content.strip()
-        match = _FENCE_RE.search(content)
-        if match:
-            content = match.group(1).strip()
+        if not content:
+            return ""
+
+        # Find all fenced code blocks, take the last one
+        matches = _FENCE_RE.findall(content)
+        if matches:
+            return matches[-1].strip()
+
+        # No fences — try to strip preamble text before first 'def ' or 'import '
+        for marker in ("def ", "import ", "from "):
+            idx = content.find(marker)
+            if idx > 0:
+                return content[idx:].strip()
+
         return content
 
     # -- execution payload ------------------------------------------------
@@ -81,22 +94,23 @@ class FunctionCodegenAdapter(ScenarioAdapter):
     ) -> dict[str, Any]:
         """Combine the candidate function with the test harness.
 
-        The payload is a dict consumed by the sandbox runner.  The ``code``
-        value is a self-contained Python script: the candidate code followed
-        by the dataset test suite, ending with ``check(entry_point)``.
+        Handles two test formats:
+        - HumanEval-style: test has ``def check(candidate):`` wrapper
+          → append ``check(entry_point)`` to invoke it
+        - MBPP-style: test has inline assertions (no check wrapper)
+          → use test code as-is, no extra call needed
         """
         test_code = instance.get("test", "")
         entry_point = instance.get("entry_point", "")
 
-        full_code = "\n".join(
-            [
-                submission,
-                "",
-                test_code,
-                "",
-                f"check({entry_point})",
-            ]
-        )
+        parts = [submission, "", test_code]
+
+        # Only append check(entry_point) if the test defines a check() wrapper
+        if entry_point and "def check(" in test_code:
+            parts.append("")
+            parts.append(f"check({entry_point})")
+
+        full_code = "\n".join(parts)
 
         return {
             "language": "python",

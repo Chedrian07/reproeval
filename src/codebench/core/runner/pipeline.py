@@ -70,6 +70,19 @@ class BenchmarkPipeline:
             response = await self.provider.generate(request)
             result.provider_response = response
 
+            # Short-circuit on provider error (API failure, network error, etc.)
+            if response.metadata.get("error"):
+                from codebench.core.models.common import ScoringResult
+
+                result.scoring_result = ScoringResult(
+                    score=0.0,
+                    passed=False,
+                    details={"reason": "provider_error", **response.metadata},
+                )
+                result.status = RunStatus.FAILED
+                self._save_instance_artifacts(run_id, instance_id, instance, result)
+                return result
+
             # Step 3: Extract submission
             submission = self.scenario.extract_submission(response)
 

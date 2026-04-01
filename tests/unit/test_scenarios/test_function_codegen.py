@@ -144,6 +144,32 @@ class TestExtractSubmission:
         result = adapter.extract_submission(resp)
         assert result == ""
 
+    def test_multiple_code_blocks_takes_last(self) -> None:
+        adapter = FunctionCodegenAdapter()
+        raw = (
+            "```python\ndef helper(): pass\n```\n"
+            "Now the real one:\n"
+            "```python\ndef solve(x): return x * 2\n```"
+        )
+        resp = _make_response(raw)
+        result = adapter.extract_submission(resp)
+        assert "solve" in result
+        assert "helper" not in result
+
+    def test_preamble_text_stripped(self) -> None:
+        adapter = FunctionCodegenAdapter()
+        raw = "Here is the solution:\ndef foo(x):\n    return x + 1"
+        resp = _make_response(raw)
+        result = adapter.extract_submission(resp)
+        assert result.startswith("def foo")
+        assert "Here is" not in result
+
+    def test_empty_response(self) -> None:
+        adapter = FunctionCodegenAdapter()
+        resp = _make_response("")
+        result = adapter.extract_submission(resp)
+        assert result == ""
+
 
 # ---------------------------------------------------------------------------
 # Build execution payload
@@ -190,7 +216,33 @@ class TestBuildExecutionPayload:
             payload = adapter.build_execution_payload(inst, submission)
             code = payload["code"]
             assert inst["entry_point"] in code
-            assert f"check({inst['entry_point']})" in code
+            # HumanEval fixtures have check(candidate) wrapper
+            if "def check(" in inst.get("test", ""):
+                assert f"check({inst['entry_point']})" in code
+
+    def test_mbpp_style_no_check_wrapper(self) -> None:
+        """MBPP tests use inline assertions — no check() should be appended."""
+        adapter = FunctionCodegenAdapter()
+        instance = {
+            "task_id": "Mbpp/1",
+            "prompt": "Write a function to find similar elements.",
+            "test": "assertion(similar_elements((1,2),(2,3)), (2,), 0)",
+        }
+        payload = adapter.build_execution_payload(instance, "def similar_elements(a,b): pass")
+        assert "check(" not in payload["code"]
+        assert "assertion(" in payload["code"]
+
+    def test_mbpp_style_no_entry_point(self) -> None:
+        """MBPP instances may lack entry_point — should not crash."""
+        adapter = FunctionCodegenAdapter()
+        instance = {
+            "task_id": "Mbpp/2",
+            "prompt": "Write a function.",
+            "test": "assert func(1) == 2",
+        }
+        payload = adapter.build_execution_payload(instance, "def func(x): return x+1")
+        assert "check(" not in payload["code"]
+        assert "assert func(1) == 2" in payload["code"]
 
 
 # ---------------------------------------------------------------------------
