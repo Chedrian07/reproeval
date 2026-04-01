@@ -98,11 +98,27 @@ class FunctionCodegenAdapter(ScenarioAdapter):
           → append ``check(entry_point)`` to invoke it
         - MBPP-style: test has inline assertions (no check wrapper)
           → use test code as-is, no extra call needed
+
+        Also prepends any import statements from the original prompt so that
+        type annotations (``List``, ``Tuple``, etc.) are available even when
+        the LLM omits them from its response.
         """
         test_code = instance.get("test", "")
         entry_point = instance.get("entry_point", "")
+        prompt = instance.get("prompt", "")
 
-        parts = [submission, "", test_code]
+        # Extract imports from the original prompt and ensure they are present
+        prompt_imports = _extract_imports(prompt)
+        submission_imports = _extract_imports(submission)
+        missing_imports = [i for i in prompt_imports if i not in submission_imports]
+
+        parts: list[str] = []
+        if missing_imports:
+            parts.extend(missing_imports)
+            parts.append("")
+        parts.append(submission)
+        parts.append("")
+        parts.append(test_code)
 
         # Only append check(entry_point) if the test defines a check() wrapper
         if entry_point and "def check(" in test_code:
@@ -117,6 +133,7 @@ class FunctionCodegenAdapter(ScenarioAdapter):
             "entry_point": entry_point,
             "timeout_seconds": 30,
         }
+
 
     # -- scoring ----------------------------------------------------------
 
@@ -152,3 +169,13 @@ class FunctionCodegenAdapter(ScenarioAdapter):
                 "task_id": instance.get("task_id", ""),
             },
         )
+
+
+def _extract_imports(code: str) -> list[str]:
+    """Extract import lines from source code."""
+    imports: list[str] = []
+    for line in code.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("import ", "from ")):
+            imports.append(stripped)
+    return imports
