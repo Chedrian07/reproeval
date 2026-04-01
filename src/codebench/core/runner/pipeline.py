@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 from typing import Any
+
+from rich.console import Console
+from rich.live import Live
+from rich.table import Table
 
 from codebench.core.config.settings import RunConfig
 from codebench.core.interfaces.artifact_store import ArtifactStore
@@ -16,7 +21,14 @@ from codebench.core.models.common import (
     ProviderRequest,
     RunManifest,
     RunStatus,
+    ScoringResult,
 )
+
+_console = Console()
+
+
+def _is_debug() -> bool:
+    return os.environ.get("CODEBENCH_DEBUG", "").lower() in ("1", "on", "true", "yes")
 
 
 class BenchmarkPipeline:
@@ -35,6 +47,7 @@ class BenchmarkPipeline:
         self.scenario = scenario
         self.sandbox = sandbox
         self.artifact_store = artifact_store
+        self._debug = _is_debug()
 
     def create_manifest(self, instances: list[dict[str, Any]]) -> RunManifest:
         return RunManifest(
@@ -70,10 +83,8 @@ class BenchmarkPipeline:
             response = await self.provider.generate(request)
             result.provider_response = response
 
-            # Short-circuit on provider error (API failure, network error, etc.)
+            # Short-circuit on provider error
             if response.metadata.get("error"):
-                from codebench.core.models.common import ScoringResult
-
                 result.scoring_result = ScoringResult(
                     score=0.0,
                     passed=False,
@@ -113,6 +124,136 @@ class BenchmarkPipeline:
         self._save_instance_artifacts(run_id, instance_id, instance, result)
         return result
 
+    # -- run orchestration ------------------------------------------------
+
+    def _build_live_table(
+        self,
+        total: int,
+        completed: int,
+        passed: int,
+        failed: int,
+        latest: list[tuple[str, str, str]],
+    ) -> Table:
+        """Build the live-updating debug scoreboard."""
+        rate = passed / completed if completed else 0.0
+        table = Table(
+            title=f"[bold]LIVE  {completed}/{total}  "
+            f"PASS {passed}  FAIL {failed}  ({rate:.1%})[/bold]",
+            show_header=True,
+            expand=True,
+        )
+        table.add_column("#", style="dim", width=6, justify="right")
+        table.add_column("Instance", style="cyan", ratio=3)
+        table.add_column("Result", width=12, justify="center")
+        table.add_column("Detail", style="dim", ratio=4)
+
+        for idx, inst_id, verdict, detail in latest[-15:]:  # show last 15
+            if verdict == "PASS":
+                style = "[bold green]PASS[/bold green]"
+            elif verdict == "FAIL":
+                style = "[bold red]FAIL[/bold red]"
+            else:
+                style = f"[yellow]{verdict}[/yellow]"
+            table.add_row(str(idx), inst_id, style, detail)
+
+        return table
+
+    def _verdict_detail(self, r: InstanceResult) -> tuple[str, str]:
+        """Extract verdict and short detail from an instance result."""
+        if r.scoring_result is None:
+            return "ERROR", r.error or "unknown"
+        if r.scoring_result.passed:
+            latency = ""
+            if r.provider_response:
+                latency = f" ({r.provider_response.latency_ms:.0f}ms)"
+            return "PASS", f"score={r.scoring_result.score}{latency}"
+
+        reason = r.scoring_result.details.get("reason", "")
+        if reason == "provider_error":
+            return "FAIL", "API error"
+        if reason == "timeout":
+            return "FAIL", "timeout"
+        if reason == "no_execution":
+            return "FAIL", "no sandbox"
+        stderr = r.scoring_result.details.get("stderr_snippet", "")
+        if stderr:
+            # First meaningful line of stderr
+            for line in stderr.splitlines():
+                line = line.strip()
+                if line and not line.startswith("Traceback") and not line.startswith("File"):
+                    return "FAIL", line[:60]
+        return "FAIL", f"exit={r.scoring_result.details.get('exit_code', '?')}"
+
+    async def _run_sequential_debug(
+        self,
+        instances: list[dict[str, Any]],
+        manifest: RunManifest,
+        results: list[InstanceResult],
+    ) -> None:
+        passed = 0
+        failed = 0
+        log: list[tuple[str, str, str, str]] = []
+
+        with Live(
+            _console.render_str("Starting..."), console=_console, refresh_per_second=4
+        ) as live:
+            for i, instance in enumerate(instances, 1):
+                r = await self.run_instance(instance, manifest.run_id)
+                results.append(r)
+                manifest.completed_instances += 1
+
+                verdict, detail = self._verdict_detail(r)
+                if verdict == "PASS":
+                    passed += 1
+                else:
+                    failed += 1
+                log.append((str(i), r.dataset_instance_id, verdict, detail))
+
+                live.update(
+                    self._build_live_table(len(instances), i, passed, failed, log)
+                )
+
+    async def _run_parallel_debug(
+        self,
+        instances: list[dict[str, Any]],
+        manifest: RunManifest,
+        results: list[InstanceResult],
+        concurrency: int,
+    ) -> list:  # type: ignore[type-arg]
+        semaphore = asyncio.Semaphore(concurrency)
+        passed = 0
+        failed = 0
+        completed = 0
+        log: list[tuple[str, str, str, str]] = []
+
+        async def _run_with_limit(idx: int, inst: dict[str, Any]) -> InstanceResult:
+            async with semaphore:
+                return await self.run_instance(inst, manifest.run_id)
+
+        tasks = [asyncio.create_task(_run_with_limit(i, inst)) for i, inst in enumerate(instances)]
+
+        with Live(
+            _console.render_str("Starting..."), console=_console, refresh_per_second=4
+        ) as live:
+            for coro in asyncio.as_completed(tasks):
+                r = await coro
+                results.append(r)
+                manifest.completed_instances += 1
+                completed += 1
+
+                verdict, detail = self._verdict_detail(r)
+                if verdict == "PASS":
+                    passed += 1
+                else:
+                    failed += 1
+                log.append((str(completed), r.dataset_instance_id, verdict, detail))
+
+                live.update(
+                    self._build_live_table(len(instances), completed, passed, failed, log)
+                )
+
+        return tasks
+
     async def run(self, instances: list[dict[str, Any]]) -> RunManifest:
         manifest = self.create_manifest(instances)
         manifest.status = RunStatus.RUNNING
@@ -120,35 +261,42 @@ class BenchmarkPipeline:
 
         concurrency = self.config.concurrency
         results: list[InstanceResult] = []
+        tasks: list[asyncio.Task[InstanceResult]] = []
 
         try:
-            if concurrency <= 1:
-                # Sequential execution
-                for instance in instances:
-                    instance_result = await self.run_instance(instance, manifest.run_id)
-                    results.append(instance_result)
-                    manifest.completed_instances += 1
+            if self._debug:
+                # Debug mode: live scoreboard
+                if concurrency <= 1:
+                    await self._run_sequential_debug(instances, manifest, results)
+                else:
+                    tasks = await self._run_parallel_debug(
+                        instances, manifest, results, concurrency
+                    )
             else:
-                # Parallel execution with semaphore
-                semaphore = asyncio.Semaphore(concurrency)
+                # Normal mode: quiet
+                if concurrency <= 1:
+                    for instance in instances:
+                        instance_result = await self.run_instance(instance, manifest.run_id)
+                        results.append(instance_result)
+                        manifest.completed_instances += 1
+                else:
+                    semaphore = asyncio.Semaphore(concurrency)
 
-                async def _run_with_limit(inst: dict[str, Any]) -> InstanceResult:
-                    async with semaphore:
-                        return await self.run_instance(inst, manifest.run_id)
+                    async def _run_with_limit(inst: dict[str, Any]) -> InstanceResult:
+                        async with semaphore:
+                            return await self.run_instance(inst, manifest.run_id)
 
-                tasks = [asyncio.create_task(_run_with_limit(inst)) for inst in instances]
-                for coro in asyncio.as_completed(tasks):
-                    result = await coro
-                    results.append(result)
-                    manifest.completed_instances += 1
+                    tasks = [asyncio.create_task(_run_with_limit(inst)) for inst in instances]
+                    for coro in asyncio.as_completed(tasks):
+                        result = await coro
+                        results.append(result)
+                        manifest.completed_instances += 1
 
             manifest.status = RunStatus.COMPLETED
         except (KeyboardInterrupt, Exception):
             manifest.status = RunStatus.FAILED
-            # Cancel remaining tasks on interrupt
-            if concurrency > 1:
-                for t in tasks:  # noqa: F821
-                    t.cancel()
+            for t in tasks:
+                t.cancel()
         finally:
             passed = sum(
                 1 for r in results if r.scoring_result is not None and r.scoring_result.passed
