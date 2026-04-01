@@ -195,6 +195,7 @@ def _build_config_from_env(
     sandbox_backend = os.environ.get("CODEBENCH_SANDBOX", "local")
     env_max = os.environ.get("CODEBENCH_MAX_INSTANCES", "")
     reasoning_effort = os.environ.get("CODEBENCH_REASONING_EFFORT", "")
+    concurrency_str = os.environ.get("CODEBENCH_CONCURRENCY", "1")
 
     if not api_key:
         raise ValueError("CODEBENCH_API_KEY not set. Create a .env file or export the variable.")
@@ -235,6 +236,7 @@ def _build_config_from_env(
         scenario_type=scenario_type,
         sandbox=SandboxConfig(backend=sandbox_backend),
         artifacts_dir=Path("artifacts"),
+        concurrency=int(concurrency_str) if concurrency_str else 1,
     )
 
 
@@ -330,6 +332,7 @@ async def execute_from_env(
     model = os.environ.get("CODEBENCH_MODEL", "?")
     base_url = os.environ.get("CODEBENCH_BASE_URL", "")
     reasoning_effort = os.environ.get("CODEBENCH_REASONING_EFFORT", "")
+    concurrency = os.environ.get("CODEBENCH_CONCURRENCY", "1")
 
     console.print("[bold]codebench — .env configuration[/bold]")
     console.print(f"  Provider: {provider_name} / {model}")
@@ -337,6 +340,8 @@ async def execute_from_env(
         console.print(f"  Base URL: {base_url}")
     if reasoning_effort:
         console.print(f"  Reasoning: {reasoning_effort}")
+    if concurrency and int(concurrency) > 1:
+        console.print(f"  Concurrency: {concurrency}")
 
     if dataset_name == "all":
         datasets = list(_DATASET_SCENARIOS.keys())

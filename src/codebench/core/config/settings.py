@@ -56,4 +56,5 @@ class RunConfig(BaseModel):
     seed: int | None = None
     prompt_version: str | None = None
     harness_version: str = "0.1.0"
+    concurrency: int = Field(default=1, ge=1, le=128)
     dry_run: bool = False

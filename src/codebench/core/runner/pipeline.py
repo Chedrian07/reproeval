@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import Any
 
@@ -104,17 +105,38 @@ class BenchmarkPipeline:
         manifest.status = RunStatus.RUNNING
         self.artifact_store.save_manifest(manifest.run_id, manifest.model_dump(mode="json"))
 
+        concurrency = self.config.concurrency
         results: list[InstanceResult] = []
+
         try:
-            for instance in instances:
-                instance_result = await self.run_instance(instance, manifest.run_id)
-                results.append(instance_result)
-                manifest.completed_instances += 1
+            if concurrency <= 1:
+                # Sequential execution
+                for instance in instances:
+                    instance_result = await self.run_instance(instance, manifest.run_id)
+                    results.append(instance_result)
+                    manifest.completed_instances += 1
+            else:
+                # Parallel execution with semaphore
+                semaphore = asyncio.Semaphore(concurrency)
+
+                async def _run_with_limit(inst: dict[str, Any]) -> InstanceResult:
+                    async with semaphore:
+                        return await self.run_instance(inst, manifest.run_id)
+
+                tasks = [asyncio.create_task(_run_with_limit(inst)) for inst in instances]
+                for coro in asyncio.as_completed(tasks):
+                    result = await coro
+                    results.append(result)
+                    manifest.completed_instances += 1
+
             manifest.status = RunStatus.COMPLETED
         except (KeyboardInterrupt, Exception):
             manifest.status = RunStatus.FAILED
+            # Cancel remaining tasks on interrupt
+            if concurrency > 1:
+                for t in tasks:  # noqa: F821
+                    t.cancel()
         finally:
-            # Always write final manifest, even on interrupt
             passed = sum(
                 1 for r in results if r.scoring_result is not None and r.scoring_result.passed
             )
