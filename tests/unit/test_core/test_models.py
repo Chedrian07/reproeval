@@ -32,7 +32,7 @@ class TestProviderRequest:
     def test_defaults(self) -> None:
         req = ProviderRequest(prompt="hello")
         assert req.temperature == 0.0
-        assert req.max_tokens == 4096
+        assert req.max_tokens == 40960
         assert req.seed is None
         assert req.stop_sequences == []
         assert req.metadata == {}

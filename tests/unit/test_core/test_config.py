@@ -17,7 +17,7 @@ class TestProviderConfig:
     def test_defaults(self) -> None:
         cfg = ProviderConfig(name="test", model="gpt-4")
         assert cfg.temperature == 0.0
-        assert cfg.max_tokens == 4096
+        assert cfg.max_tokens == 40960
         assert cfg.api_key_env == ""
         assert cfg.base_url is None
 

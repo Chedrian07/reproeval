@@ -38,7 +38,7 @@ class ProviderRequest(BaseModel):
     prompt: str
     system_prompt: str | None = None
     temperature: float = 0.0
-    max_tokens: int = 4096
+    max_tokens: int = 40960
     seed: int | None = None
     stop_sequences: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -18,7 +18,7 @@ class ProviderConfig(BaseModel):
     api_key_env: str = ""
     base_url: str | None = None
     temperature: float = 0.0
-    max_tokens: int = 4096
+    max_tokens: int = 40960
     seed: int | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
