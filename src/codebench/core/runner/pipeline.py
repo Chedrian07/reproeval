@@ -105,21 +105,28 @@ class BenchmarkPipeline:
         self.artifact_store.save_manifest(manifest.run_id, manifest.model_dump(mode="json"))
 
         results: list[InstanceResult] = []
-        for instance in instances:
-            instance_result = await self.run_instance(instance, manifest.run_id)
-            results.append(instance_result)
-            manifest.completed_instances += 1
+        try:
+            for instance in instances:
+                instance_result = await self.run_instance(instance, manifest.run_id)
+                results.append(instance_result)
+                manifest.completed_instances += 1
+            manifest.status = RunStatus.COMPLETED
+        except (KeyboardInterrupt, Exception):
+            manifest.status = RunStatus.FAILED
+        finally:
+            # Always write final manifest, even on interrupt
+            passed = sum(
+                1 for r in results if r.scoring_result is not None and r.scoring_result.passed
+            )
+            total = len(results)
+            manifest.results_summary = {
+                "total": total,
+                "passed": passed,
+                "failed": total - passed,
+                "pass_rate": passed / total if total else 0.0,
+            }
+            self.artifact_store.save_manifest(manifest.run_id, manifest.model_dump(mode="json"))
 
-        # Summarize
-        passed = sum(1 for r in results if r.scoring_result is not None and r.scoring_result.passed)
-        manifest.status = RunStatus.COMPLETED
-        manifest.results_summary = {
-            "total": len(results),
-            "passed": passed,
-            "failed": len(results) - passed,
-            "pass_rate": passed / len(results) if results else 0.0,
-        }
-        self.artifact_store.save_manifest(manifest.run_id, manifest.model_dump(mode="json"))
         return manifest
 
     def _save_instance_artifacts(

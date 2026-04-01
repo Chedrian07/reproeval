@@ -110,6 +110,32 @@ def list_runs(
 
 
 @app.command()
+def clean_runs(
+    artifacts_dir: Path = typer.Option(Path("artifacts"), help="Artifacts directory"),
+) -> None:
+    """Remove incomplete (running/failed) runs from artifacts."""
+    import shutil
+
+    from codebench.artifacts.filesystem import FilesystemArtifactStore
+
+    store = FilesystemArtifactStore(artifacts_dir)
+    runs = store.list_runs()
+    removed = 0
+    for run_id in runs:
+        manifest = store.load_manifest(run_id)
+        status = manifest.get("status", "unknown")
+        if status in ("running", "failed", "pending"):
+            run_path = artifacts_dir / run_id
+            shutil.rmtree(run_path, ignore_errors=True)
+            console.print(f"  [red]removed[/red] {run_id} (status={status})")
+            removed += 1
+    if removed:
+        console.print(f"\n{removed} run(s) removed.")
+    else:
+        console.print("[dim]No incomplete runs to clean.[/dim]")
+
+
+@app.command()
 def replay(
     run_id: str = typer.Argument(..., help="Run ID to replay"),
     artifacts_dir: Path = typer.Option(Path("artifacts"), help="Artifacts directory"),
