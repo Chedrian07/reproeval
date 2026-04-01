@@ -129,6 +129,10 @@ class OpenAIResponsesProvider(ProviderInterface):
         reasoning_effort = self._config.extra.get("reasoning_effort")
         if reasoning_effort:
             payload["reasoning"] = {"effort": reasoning_effort, "summary": "auto"}
+        # Forward extra sampling params (top_p, min_p, top_k, etc.)
+        for key in ("top_p", "min_p", "top_k", "frequency_penalty", "presence_penalty"):
+            if key in self._config.extra:
+                payload[key] = self._config.extra[key]
         return payload
 
     def _parse_response(

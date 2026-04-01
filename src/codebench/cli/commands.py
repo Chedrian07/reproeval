@@ -218,6 +218,20 @@ def _build_config_from_env(
     extra: dict[str, Any] = {}
     if reasoning_effort:
         extra["reasoning_effort"] = reasoning_effort
+    # Sampling parameters from env
+    for env_key, param_key in [
+        ("CODEBENCH_TOP_P", "top_p"),
+        ("CODEBENCH_MIN_P", "min_p"),
+        ("CODEBENCH_TOP_K", "top_k"),
+        ("CODEBENCH_FREQUENCY_PENALTY", "frequency_penalty"),
+        ("CODEBENCH_PRESENCE_PENALTY", "presence_penalty"),
+    ]:
+        val = os.environ.get(env_key, "")
+        if val:
+            extra[param_key] = float(val) if "." in val else int(val)
+
+    temperature_str = os.environ.get("CODEBENCH_TEMPERATURE", "")
+    temperature = float(temperature_str) if temperature_str else 0.0
 
     return RunConfig(
         provider=ProviderConfig(
@@ -225,6 +239,7 @@ def _build_config_from_env(
             model=model,
             api_key_env=key_env_name,
             base_url=base_url or None,
+            temperature=temperature,
             extra=extra,
         ),
         dataset=DatasetConfig(

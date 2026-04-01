@@ -52,7 +52,6 @@ class FunctionCodegenAdapter(ScenarioAdapter):
         return ProviderRequest(
             prompt=user_prompt,
             system_prompt=_SYSTEM_PROMPT,
-            temperature=0.0,
             metadata={
                 "task_id": instance.get("task_id", ""),
                 "entry_point": entry_point,
