@@ -197,9 +197,7 @@ def _build_config_from_env(
     reasoning_effort = os.environ.get("CODEBENCH_REASONING_EFFORT", "")
 
     if not api_key:
-        raise ValueError(
-            "CODEBENCH_API_KEY not set. Create a .env file or export the variable."
-        )
+        raise ValueError("CODEBENCH_API_KEY not set. Create a .env file or export the variable.")
 
     # Resolve max_instances: CLI flag > env var > None
     resolved_max: int | None = max_instances
@@ -209,8 +207,7 @@ def _build_config_from_env(
     scenario_type = _DATASET_SCENARIOS.get(dataset_name)
     if scenario_type is None:
         raise ValueError(
-            f"Unknown dataset: {dataset_name}. "
-            f"Available: {', '.join(sorted(_DATASET_SCENARIOS))}"
+            f"Unknown dataset: {dataset_name}. Available: {', '.join(sorted(_DATASET_SCENARIOS))}"
         )
 
     # Write the API key to a temp env var so the provider can read it

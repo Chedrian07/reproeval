@@ -132,7 +132,7 @@ def _read_data_file(path: Path) -> list[dict[str, Any]]:
         if not isinstance(data, list):
             msg = f"Expected JSON array in {path}"
             raise ValueError(msg)
-        return data  # type: ignore[no-any-return]
+        return data
 
     # Fall back to JSONL (one object per line)
     instances: list[dict[str, Any]] = []

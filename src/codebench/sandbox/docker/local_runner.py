@@ -132,8 +132,13 @@ class LocalProcessRunner(SandboxRunner):
             # Build a minimal environment to avoid leaking host secrets.
             # Include Python-related vars so installed packages are found.
             allowed_env_keys = (
-                "PATH", "HOME", "LANG", "TMPDIR",
-                "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV",
+                "PATH",
+                "HOME",
+                "LANG",
+                "TMPDIR",
+                "PYTHONPATH",
+                "PYTHONHOME",
+                "VIRTUAL_ENV",
             )
             minimal_env = {k: os.environ[k] for k in allowed_env_keys if k in os.environ}
             if env:
