@@ -1,0 +1,26 @@
+name: swe_bench_verified
+version: "1.0"
+description: "SWE-bench Verified — a human-validated subset of SWE-bench with approximately 500 confirmed-solvable issues"
+scenario_type: repo_patch
+track_types:
+  - lm_only
+  - standard_tools
+  - open_agent
+instance_count: 500
+source_url: "https://github.com/princeton-nlp/SWE-bench"
+license: "MIT"
+language: "python"
+splits:
+  - test
+format_type: "jsonl"
+required_fields:
+  - instance_id
+  - repo
+  - base_commit
+  - problem_statement
+  - patch
+  - test_patch
+metadata:
+  parent_dataset: "swe_bench"
+  subset: "verified"
+  human_validated: true

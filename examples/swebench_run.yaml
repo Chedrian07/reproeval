@@ -1,0 +1,22 @@
+provider:
+  name: openai_chat_completions
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+
+dataset:
+  name: swe_bench_lite
+  version: "1.0"
+  max_instances: 3
+
+scenario_type: repo_patch
+track_type: standard_tools
+
+sandbox:
+  backend: docker
+  timeout_seconds: 120
+  memory_limit_mb: 2048
+  network_enabled: false
+  image: python:3.12-slim
+
+artifacts_dir: artifacts
+seed: 42

@@ -1,0 +1,23 @@
+name: bigcodebench_hard
+version: "1.0"
+description: "BigCodeBench-Hard — the hardest subset of BigCodeBench requiring complex library usage and multi-step reasoning"
+scenario_type: function_codegen
+track_types:
+  - lm_only
+instance_count: 148
+source_url: "https://github.com/bigcode-project/bigcodebench"
+license: "Apache-2.0"
+language: "python"
+splits:
+  - test
+format_type: "jsonl"
+required_fields:
+  - task_id
+  - prompt
+  - entry_point
+  - test
+  - libs
+metadata:
+  parent_dataset: "bigcodebench"
+  subset: "hard"
+  multi_library: true

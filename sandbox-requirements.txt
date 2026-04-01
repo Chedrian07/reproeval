@@ -1,0 +1,40 @@
+# Sandbox execution dependencies for codebench benchmark datasets
+# Install: pip install -r sandbox-requirements.txt
+#
+# These packages are required by the test harnesses of the benchmark datasets.
+# Not needed by codebench itself — only by the code that runs inside the sandbox.
+
+# ── Core scientific stack (HumanEval+, MBPP+, BigCodeBench-Hard, SWE-bench) ──
+numpy>=1.26
+scipy>=1.12
+pandas>=2.1
+sympy>=1.12
+
+# ── ML / Data Science (BigCodeBench-Hard, SWE-bench) ──
+scikit-learn>=1.4
+matplotlib>=3.8
+seaborn>=0.13
+
+# ── Web / Parsing (BigCodeBench-Hard) ──
+requests>=2.31
+beautifulsoup4>=4.12
+urllib3>=2.1
+
+# ── Testing (SWE-bench, BigCodeBench-Hard) ──
+pytest>=8.0
+
+# ── Astronomy (SWE-bench) ──
+astropy>=6.0
+
+# ── Data formats (SWE-bench, BigCodeBench-Hard) ──
+xarray>=2024.1
+PyYAML>=6.0
+
+# ── Django (SWE-bench — django/django tasks) ──
+django>=4.2
+
+# ── Docs (SWE-bench — sphinx-doc/sphinx tasks) ──
+sphinx>=7.2
+
+# ── Linting (SWE-bench — pylint-dev/pylint tasks) ──
+pylint>=3.0

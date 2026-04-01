@@ -1,0 +1,25 @@
+name: swe_bench_lite
+version: "1.0"
+description: "SWE-bench Lite — a 300-instance subset of SWE-bench focusing on self-contained, well-scoped issues"
+scenario_type: repo_patch
+track_types:
+  - lm_only
+  - standard_tools
+  - open_agent
+instance_count: 300
+source_url: "https://github.com/princeton-nlp/SWE-bench"
+license: "MIT"
+language: "python"
+splits:
+  - test
+format_type: "jsonl"
+required_fields:
+  - instance_id
+  - repo
+  - base_commit
+  - problem_statement
+  - patch
+  - test_patch
+metadata:
+  parent_dataset: "swe_bench"
+  subset: "lite"

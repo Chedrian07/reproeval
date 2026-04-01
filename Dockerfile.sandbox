@@ -1,0 +1,19 @@
+FROM python:3.12-slim
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python deps for benchmark test harnesses
+COPY sandbox-requirements.txt /tmp/sandbox-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/sandbox-requirements.txt \
+    && rm /tmp/sandbox-requirements.txt
+
+# Sandbox workspace
+WORKDIR /workspace
+
+# Run as non-root
+RUN useradd -m -s /bin/bash sandbox
+USER sandbox

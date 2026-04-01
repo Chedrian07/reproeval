@@ -1,0 +1,23 @@
+provider:
+  name: openai_responses
+  model: gpt-5.4-mini
+  api_key_env: LOCAL_API_KEY
+  base_url: "http://localhost:8317"
+
+dataset:
+  name: humaneval_plus
+  version: "1.0"
+  path: "tests/fixtures/humaneval_sample.json"
+  max_instances: 2
+
+scenario_type: function_codegen
+track_type: lm_only
+
+sandbox:
+  backend: local
+  timeout_seconds: 10
+  memory_limit_mb: 512
+  network_enabled: false
+
+artifacts_dir: artifacts
+harness_version: "0.1.0"

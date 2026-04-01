@@ -1,0 +1,21 @@
+name: mbpp_plus
+version: "1.0"
+description: "MBPP+ — the sanitised MBPP split augmented with additional test cases from EvalPlus"
+scenario_type: function_codegen
+track_types:
+  - lm_only
+instance_count: 399
+source_url: "https://github.com/evalplus/evalplus"
+license: "CC-BY-4.0"
+language: "python"
+splits:
+  - test
+format_type: "jsonl"
+required_fields:
+  - task_id
+  - prompt
+  - entry_point
+  - test
+metadata:
+  origin: "google-research/mbpp"
+  augmentation: "evalplus"

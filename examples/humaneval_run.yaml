@@ -1,0 +1,23 @@
+provider:
+  name: openai_chat_completions
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+
+dataset:
+  name: humaneval_plus
+  version: "1.0"
+  max_instances: 5
+
+scenario_type: function_codegen
+track_type: lm_only
+
+sandbox:
+  backend: docker
+  timeout_seconds: 30
+  memory_limit_mb: 512
+  network_enabled: false
+  image: python:3.12-slim
+
+artifacts_dir: artifacts
+seed: 42
+harness_version: "0.1.0"
