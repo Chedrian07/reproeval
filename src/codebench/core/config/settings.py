@@ -30,7 +30,7 @@ class SandboxConfig(BaseModel):
     timeout_seconds: int = Field(default=30, ge=1, le=600)
     memory_limit_mb: int = Field(default=512, ge=64, le=16384)
     network_enabled: bool = False
-    image: str = "python:3.12-slim"
+    image: str = "codebench-sandbox"
     max_output_bytes: int = Field(default=1_000_000, ge=1024, le=100_000_000)
 
 

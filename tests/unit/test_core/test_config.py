@@ -39,7 +39,7 @@ class TestSandboxConfig:
         assert cfg.backend == "docker"
         assert cfg.timeout_seconds == 30
         assert cfg.network_enabled is False
-        assert cfg.image == "python:3.12-slim"
+        assert cfg.image == "codebench-sandbox"
 
     def test_custom(self) -> None:
         cfg = SandboxConfig(timeout_seconds=60, memory_limit_mb=1024, network_enabled=True)

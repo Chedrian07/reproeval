@@ -249,7 +249,10 @@ def _build_config_from_env(
             max_instances=resolved_max,
         ),
         scenario_type=scenario_type,
-        sandbox=SandboxConfig(backend=sandbox_backend),
+        sandbox=SandboxConfig(
+            backend=sandbox_backend,
+            image=os.environ.get("CODEBENCH_SANDBOX_IMAGE", "codebench-sandbox"),
+        ),
         artifacts_dir=Path("artifacts"),
         concurrency=int(concurrency_str) if concurrency_str else 1,
     )
