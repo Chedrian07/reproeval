@@ -179,11 +179,18 @@ class BenchmarkPipeline:
             return "FAIL", "no sandbox"
         stderr = r.scoring_result.details.get("stderr_snippet", "")
         if stderr:
-            # First meaningful line of stderr
-            for line in stderr.splitlines():
-                line = line.strip()
-                if line and not line.startswith("Traceback") and not line.startswith("File"):
-                    return "FAIL", line[:60]
+            lines = stderr.splitlines()
+            # Priority 1: actual error type (NameError, SyntaxError, etc.)
+            for line in reversed(lines):
+                s = line.strip()
+                is_err = ("Error" in s or "Exception" in s)
+                if s and is_err and not s.startswith(("Traceback", "File")):
+                    return "FAIL", s[:80]
+            # Priority 2: last meaningful line
+            for line in reversed(lines):
+                s = line.strip()
+                if s and len(s) > 3 and not s.startswith(("Traceback", "File", "^")):
+                    return "FAIL", s[:80]
         return "FAIL", f"exit={r.scoring_result.details.get('exit_code', '?')}"
 
     async def _run_sequential_debug(
