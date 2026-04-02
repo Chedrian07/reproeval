@@ -164,21 +164,32 @@ class BenchmarkPipeline:
     @staticmethod
     def _problem_summary(instance: dict[str, Any]) -> str:
         """Extract a short problem description from the instance."""
-        # Use entry_point or function name as primary identifier
+        # HumanEval: entry_point (skip generic "task_func" from BigCodeBench)
         ep = instance.get("entry_point", "")
-        if ep:
+        if ep and ep != "task_func":
             return ep
-        # MBPP: extract from prompt
+        # LiveCodeBench: question_title
+        title = instance.get("question_title", "")
+        if title:
+            return title[:50]
+        # CRUXEval: first line of code
+        code = instance.get("code", "")
+        if code:
+            first = code.split("\n")[0].strip()
+            return first[:50]
+        # SWE-bench: first sentence of problem_statement
+        ps = instance.get("problem_statement", "")
+        if ps:
+            return ps.split("\n")[0].strip()[:50]
+        # MBPP: prompt
         prompt = instance.get("prompt", "")
         if prompt:
-            # First sentence, trimmed
-            first_line = prompt.split(".")[0].split("\n")[0].strip()
-            return first_line[:50]
-        # BigCodeBench: use instruct_prompt
+            return prompt.split(".")[0].split("\n")[0].strip()[:50]
+        # BigCodeBench: instruct_prompt
         ip = instance.get("instruct_prompt", "")
         if ip:
             return ip.split(".")[0].strip()[:50]
-        return instance.get("task_id", "")
+        return ""
 
     def _verdict_detail(self, r: InstanceResult) -> tuple[str, str]:
         """Extract verdict and short detail from an instance result."""
