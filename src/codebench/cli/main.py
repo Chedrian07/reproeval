@@ -137,20 +137,74 @@ def clean_runs(
 
 @app.command()
 def replay(
-    run_id: str = typer.Argument(..., help="Run ID to replay"),
+    query: str = typer.Argument(..., help="Run ID or instance ID (e.g. HumanEval/0, 1873_D)"),
     artifacts_dir: Path = typer.Option(Path("artifacts"), help="Artifacts directory"),
 ) -> None:
-    """Replay and inspect a previous run."""
+    """Replay a run or inspect a specific instance result.
+
+    Examples:
+        codebench replay abc123def456      # replay full run
+        codebench replay HumanEval/0       # find instance across all runs
+        codebench replay 1873_D            # find instance by question_id
+    """
     from codebench.artifacts.filesystem import FilesystemArtifactStore
 
     store = FilesystemArtifactStore(artifacts_dir)
-    manifest = store.load_manifest(run_id)
-    console.print_json(json.dumps(manifest, indent=2, default=str))
+    runs = store.list_runs()
 
-    artifacts = store.list_artifacts(run_id)
-    console.print(f"\n[bold]Artifacts ({len(artifacts)}):[/bold]")
-    for a in artifacts:
-        console.print(f"  {a}")
+    # Case 1: exact run_id match
+    if query in runs:
+        manifest = store.load_manifest(query)
+        console.print_json(json.dumps(manifest, indent=2, default=str))
+        artifacts = store.list_artifacts(query)
+        console.print(f"\n[bold]Artifacts ({len(artifacts)}):[/bold]")
+        for a in artifacts:
+            console.print(f"  {a}")
+        return
+
+    # Case 2: search for instance across runs (most recent first)
+    for run_id in reversed(runs):
+        run_path = artifacts_dir / run_id
+        for inst_dir in sorted(run_path.iterdir()):
+            if inst_dir.name == "manifest.json" or not inst_dir.is_dir():
+                continue
+            result_file = inst_dir / "result.json"
+            if not result_file.exists():
+                continue
+            result = json.loads(result_file.read_text(encoding="utf-8"))
+            ds_id = result.get("dataset_instance_id", "")
+            if query in ds_id or ds_id == query:
+                pr = result.get("provider_response", {})
+                er = result.get("execution_result", {})
+                sr = result.get("scoring_result", {})
+
+                console.print(f"[bold]Instance: {ds_id}[/bold]  (run {run_id})")
+                console.print(f"  Status: {result.get('status')}")
+
+                if sr:
+                    passed = sr.get("passed")
+                    color = "green" if passed else "red"
+                    console.print(f"  Result: [{color}]{'PASS' if passed else 'FAIL'}[/{color}]")
+
+                if pr and pr.get("content"):
+                    console.print(f"\n[bold]LLM Response[/bold] ({pr.get('model', '?')}):")
+                    console.print(pr["content"][:2000])
+
+                if er:
+                    console.print("\n[bold]Execution[/bold]:")
+                    console.print(f"  Exit code: {er.get('exit_code')}")
+                    if er.get("stdout"):
+                        console.print(f"  Stdout: {er['stdout'][:500]}")
+                    if er.get("stderr"):
+                        console.print(f"  Stderr: {er['stderr'][:500]}")
+
+                if sr and sr.get("details"):
+                    reason = sr["details"].get("reason", "")
+                    if reason:
+                        console.print(f"\n  Reason: {reason}")
+                return
+
+    console.print(f"[red]Not found:[/red] '{query}' is not a run ID or instance ID.")
 
 
 if __name__ == "__main__":
