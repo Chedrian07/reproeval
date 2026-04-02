@@ -144,21 +144,41 @@ class BenchmarkPipeline:
             show_header=True,
             expand=True,
         )
-        table.add_column("#", style="dim", width=6, justify="right")
-        table.add_column("Instance", style="cyan", ratio=3)
-        table.add_column("Result", width=12, justify="center")
-        table.add_column("Detail", style="dim", ratio=4)
+        table.add_column("#", style="dim", width=5, justify="right")
+        table.add_column("Instance", style="cyan", width=20)
+        table.add_column("Problem", ratio=3)
+        table.add_column("Result", width=8, justify="center")
+        table.add_column("Detail", style="dim", ratio=3)
 
-        for idx, inst_id, verdict, detail in latest[-15:]:  # show last 15
+        for idx, inst_id, problem, verdict, detail in latest[-15:]:
             if verdict == "PASS":
                 style = "[bold green]PASS[/bold green]"
             elif verdict == "FAIL":
                 style = "[bold red]FAIL[/bold red]"
             else:
                 style = f"[yellow]{verdict}[/yellow]"
-            table.add_row(str(idx), inst_id, style, detail)
+            table.add_row(str(idx), inst_id, problem, style, detail)
 
         return table
+
+    @staticmethod
+    def _problem_summary(instance: dict[str, Any]) -> str:
+        """Extract a short problem description from the instance."""
+        # Use entry_point or function name as primary identifier
+        ep = instance.get("entry_point", "")
+        if ep:
+            return ep
+        # MBPP: extract from prompt
+        prompt = instance.get("prompt", "")
+        if prompt:
+            # First sentence, trimmed
+            first_line = prompt.split(".")[0].split("\n")[0].strip()
+            return first_line[:50]
+        # BigCodeBench: use instruct_prompt
+        ip = instance.get("instruct_prompt", "")
+        if ip:
+            return ip.split(".")[0].strip()[:50]
+        return instance.get("task_id", "")
 
     def _verdict_detail(self, r: InstanceResult) -> tuple[str, str]:
         """Extract verdict and short detail from an instance result."""
@@ -205,7 +225,7 @@ class BenchmarkPipeline:
     ) -> None:
         passed = 0
         failed = 0
-        log: list[tuple[str, str, str, str]] = []
+        log: list[tuple[str, str, str, str, str]] = []
 
         with Live(
             _console.render_str("Starting..."), console=_console, refresh_per_second=4
@@ -216,11 +236,12 @@ class BenchmarkPipeline:
                 manifest.completed_instances += 1
 
                 verdict, detail = self._verdict_detail(r)
+                problem = self._problem_summary(instance)
                 if verdict == "PASS":
                     passed += 1
                 else:
                     failed += 1
-                log.append((str(i), r.dataset_instance_id, verdict, detail))
+                log.append((str(i), r.dataset_instance_id, problem, verdict, detail))
 
                 live.update(
                     self._build_live_table(len(instances), i, passed, failed, log)
@@ -237,29 +258,32 @@ class BenchmarkPipeline:
         passed = 0
         failed = 0
         completed = 0
-        log: list[tuple[str, str, str, str]] = []
+        log: list[tuple[str, str, str, str, str]] = []
 
-        async def _run_with_limit(idx: int, inst: dict[str, Any]) -> InstanceResult:
+        async def _run_with_limit(
+            inst: dict[str, Any],
+        ) -> tuple[InstanceResult, dict[str, Any]]:
             async with semaphore:
-                return await self.run_instance(inst, manifest.run_id)
+                return await self.run_instance(inst, manifest.run_id), inst
 
-        tasks = [asyncio.create_task(_run_with_limit(i, inst)) for i, inst in enumerate(instances)]
+        tasks = [asyncio.create_task(_run_with_limit(inst)) for inst in instances]
 
         with Live(
             _console.render_str("Starting..."), console=_console, refresh_per_second=4
         ) as live:
             for coro in asyncio.as_completed(tasks):
-                r = await coro
+                r, inst = await coro
                 results.append(r)
                 manifest.completed_instances += 1
                 completed += 1
 
                 verdict, detail = self._verdict_detail(r)
+                problem = self._problem_summary(inst)
                 if verdict == "PASS":
                     passed += 1
                 else:
                     failed += 1
-                log.append((str(completed), r.dataset_instance_id, verdict, detail))
+                log.append((str(completed), r.dataset_instance_id, problem, verdict, detail))
 
                 live.update(
                     self._build_live_table(len(instances), completed, passed, failed, log)
