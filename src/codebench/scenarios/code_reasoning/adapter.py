@@ -82,31 +82,31 @@ class CodeReasoningAdapter(ScenarioAdapter):
         code = instance.get("code", "")
         input_val = instance.get("input", "")
 
-        verifier = textwrap.dedent(f"""\
-            import sys
+        lines = [
+            "import sys",
+            "",
+            "# The original function",
+            code,
+            "",
+            "# Compute actual output",
+            f"_actual = f({input_val})",
+            "",
+            "# The LLM's predicted output",
+            "try:",
+            f"    _predicted = eval({submission!r})",
+            "except Exception:",
+            f"    print('Cannot parse LLM prediction: ' + {submission!r}, file=sys.stderr)",
+            "    sys.exit(1)",
+            "",
+            "if _actual == _predicted:",
+            "    sys.exit(0)",
+            "else:",
+            "    print(f'Expected: {_actual!r}', file=sys.stderr)",
+            "    print(f'Predicted: {_predicted!r}', file=sys.stderr)",
+            "    sys.exit(1)",
+        ]
 
-            # The original function
-            {code}
-
-            # Compute actual output
-            _actual = f({input_val})
-
-            # The LLM's predicted output
-            try:
-                _predicted = eval({submission!r})
-            except Exception:
-                print("Cannot parse LLM prediction: " + {submission!r}, file=sys.stderr)
-                sys.exit(1)
-
-            if _actual == _predicted:
-                sys.exit(0)
-            else:
-                print(f"Expected: {{_actual!r}}", file=sys.stderr)
-                print(f"Predicted: {{_predicted!r}}", file=sys.stderr)
-                sys.exit(1)
-        """)
-
-        return {"language": "python", "code": verifier, "timeout_seconds": 10}
+        return {"language": "python", "code": "\n".join(lines), "timeout_seconds": 10}
 
     def score(
         self,
