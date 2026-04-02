@@ -34,8 +34,13 @@ _DATASET_SCENARIOS: dict[str, ScenarioType] = {
     "cruxeval": ScenarioType.CODE_REASONING,
 }
 
-# Scenarios with working adapters (not stubs).
-_IMPLEMENTED_SCENARIOS: set[ScenarioType] = {ScenarioType.FUNCTION_CODEGEN}
+# Scenarios with working adapters.
+_IMPLEMENTED_SCENARIOS: set[ScenarioType] = {
+    ScenarioType.FUNCTION_CODEGEN,
+    ScenarioType.CONTEST_CODEGEN,
+    ScenarioType.CODE_REASONING,
+    ScenarioType.REPO_PATCH,
+}
 
 
 # ---------------------------------------------------------------------------
