@@ -165,10 +165,14 @@ class BenchmarkPipeline:
         if r.scoring_result is None:
             return "ERROR", r.error or "unknown"
         if r.scoring_result.passed:
-            latency = ""
+            parts: list[str] = []
             if r.provider_response:
-                latency = f" ({r.provider_response.latency_ms:.0f}ms)"
-            return "PASS", f"score={r.scoring_result.score}{latency}"
+                u = r.provider_response.usage
+                parts.append(f"{r.provider_response.latency_ms:.0f}ms")
+                parts.append(f"tokens={u.input_tokens}+{u.output_tokens}")
+            if r.execution_result:
+                parts.append(f"exec={r.execution_result.duration_ms:.0f}ms")
+            return "PASS", "  ".join(parts) if parts else "ok"
 
         reason = r.scoring_result.details.get("reason", "")
         if reason == "provider_error":
